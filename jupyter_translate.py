@@ -194,7 +194,6 @@ class MarkdownTranslator:
                 cl = len([1 for x in text if x == '>'])
                 if cl >= 3:
                     if ol - cl <= 2 or cl - ol <= 2:
-                        print(ol, cl)
                         return True
         return False
 
@@ -273,8 +272,7 @@ class NotebookTranslator:
                 cells.append(cell)
         doc['cells'] = cells
 
-# Translate Notebook
-
+# Test
 
 def test_translate():
     with open('bing.key', 'r') as f:
@@ -307,29 +305,52 @@ def test_markdown_translate():
     print(t)
     bt.save_cache()
 
-# Main
-
-import sys
-import glob
-
-if __name__ == '__main__':
+def test():
     #test_translate()
     #test_markdown()
-    #test_markdown_translate()
-    with open('bing.key', 'r') as f:
-        key = f.read().strip()
-    bt = BingTranslator(key)
-    bt.load_cache()
-    nt = NotebookTranslator(bt)
-    if True:
-        for fname in glob.glob('Tutorials/*.ipynb'):
-            if not fname.endswith('_ja.ipynb'):
-                print('Translating %s...' % (fname,))
-                nt.translate_file(fname)
-                bt.save_cache()
+    test_markdown_translate()
+
+# Main
+
+import argparse
+
+if __name__ == '__main__':
+    import sys
+    import glob
+
+    parser = argparse.ArgumentParser(description='Translate Jupyter notebook using Bing Translator API.')
+    parser.add_argument('-k', '--key', nargs='?', help='Bing Translator API secret key.', type=str)
+    parser.add_argument('--key-file', nargs='?', help='Use Bing Translator API secret key from file.', type=str, default='bing.key')
+    parser.add_argument('--from', nargs='?', dest='from_lang', help='Language to translate from.', type=str, default='en')
+    parser.add_argument('--to', nargs='?', dest='to_lang', help='Language to translate to.', type=str, default='ja')
+    parser.add_argument('inputs', nargs='+', help="Input files.")
+    args = parser.parse_args()
+
+    if args.key is not None:
+        key = args.key
+    elif args.key_file is not None:
+        with open(args.key_file, 'r') as f:
+            key = f.read().strip()
+    fnames = args.inputs
+    from_lang = args.from_lang
+    to_lang = args.to_lang
+
+    if False:
+        test()
     else:
-        for arg in sys.argv[1:]:
-            for fname in glob.glob(arg):
-                print('Translating %s...' % (fname,))
-                nt.translate_file(fname)
-                bt.save_cache()
+        bt = BingTranslator(key)
+        bt.load_cache()
+        nt = NotebookTranslator(bt)
+        if len(fnames) == 1 and os.path.isdir(fnames[0]):
+            print('Directory mode. Translating files under directory...')
+            for fname in glob.glob(os.path.join(fnames[0], '*.ipynb')):
+                if not fname.endswith('_%s.ipynb' % (to_lang,)):
+                    print('Translating %s...' % (fname,))
+                    nt.translate_file(fname)
+                    bt.save_cache()
+        else:
+            for arg in sys.argv[1:]:
+                for fname in glob.glob(arg):
+                    print('Translating %s...' % (fname,))
+                    nt.translate_file(fname)
+                    bt.save_cache()
