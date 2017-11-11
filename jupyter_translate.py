@@ -79,7 +79,7 @@ class InlineMathPattern(Pattern):
 
 class MathExtension(Extension):
     def extendMarkdown(self, md, md_globals):
-        inline_math = InlineMathPattern(r'\$([^*]+)\$')
+        inline_math = InlineMathPattern(r'\$([^$]+)\$')
         md.inlinePatterns.add('inlinemath', inline_math, '>emphasis2')
 
 # Unmarkdown
@@ -126,7 +126,7 @@ class Unmarkdown:
                 s = self.new_block(s)
                 s += '>' + self.unmarkdown_elem(child).strip()
             elif child.tag == 'ul':
-                self.list_type = '-'
+                self.list_type = '- '
                 s = self.new_block(s)
                 s += self.unmarkdown_elem(child).strip()
             elif child.tag == 'ol':
@@ -138,7 +138,7 @@ class Unmarkdown:
                 if type(self.list_type) == str:
                     s += self.list_type + self.unmarkdown_elem(child).strip()
                 elif type(self.list_type) == int:
-                    s += str(self.list_type) + '.' + self.unmarkdown_elem(child).strip()
+                    s += str(self.list_type) + '. ' + self.unmarkdown_elem(child).strip()
                     self.list_type += 1
             elif child.tag == 'br':
                 s = self.new_block(s)
@@ -234,7 +234,13 @@ class NotebookTranslator:
     def __init__(self, bing_translator):
         self.markdown_translator = MarkdownTranslator(bing_translator)
 
-    def translate_file(self, infname, outfname=None, replace=False, from_lang='en', to_lang='ja', **config):
+    def translate_file(self, infname, outfname=None, **config):
+        if infname.endswith('.ipynb'):
+            self.translate_file_notebook(infname, outfname, **config)
+        elif infname.endswith('.md'):
+            self.translate_file_markdown(infname, outfname, **config)
+
+    def translate_file_notebook(self, infname, outfname=None, replace=False, from_lang='en', to_lang='ja', **config):
         if outfname is None:
             outfname = re.sub(r'\.ipynb', '_%s.ipynb' % (to_lang,), infname)
             if infname == outfname:
@@ -244,6 +250,17 @@ class NotebookTranslator:
         self.translate_document(doc, replace=replace, from_lang=from_lang, to_lang=to_lang, **config)
         with codecs.open(outfname, 'w', 'utf-8') as f:
             json.dump(doc, f)
+
+    def translate_file_markdown(self, infname, outfname=None, from_lang='en', to_lang='ja', **config):
+        if outfname is None:
+            outfname = re.sub(r'\.md', '_%s.md' % (to_lang,), infname)
+            if infname == outfname:
+                raise Exception()
+        with codecs.open(infname, 'r', 'utf-8-sig') as f:
+            text = f.read()
+        text = self.markdown_translator.translate(text, **config)
+        with codecs.open(outfname, 'w', 'utf-8') as f:
+            f.write(text)
 
     def cell_to_markdown(self, cell):
         source = cell['source']
