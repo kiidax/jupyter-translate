@@ -102,73 +102,78 @@ class Unmarkdown:
         else:
             return s
 
-    def unmarkdown_elem(self, elem):
+    def unmarkdown_elem(self, elem, s):
+        if elem.tag == 'h1':
+            s = self.new_block(s)
+            s += '# %s' % (elem.text,)
+        elif elem.tag == 'h2':
+            s = self.new_block(s)
+            s += '## %s' % (elem.text,)
+        elif elem.tag == 'h3':
+            s = self.new_block(s)
+            s += '### %s' % (elem.text,)
+        elif elem.tag == 'h4':
+            s = self.new_block(s)
+            s += '#### %s' % (elem.text,)
+        elif elem.tag == 'p' or elem.tag == 'div':
+            s = self.new_block(s)
+            s += self.unmarkdown_elem_list(elem).strip()
+        elif elem.tag == 'blockquote':
+            s = self.new_block(s)
+            s += '>' + self.unmarkdown_elem_list(elem).strip()
+        elif elem.tag == 'ul':
+            self.list_type = '- '
+            s = self.new_block(s)
+            s += self.unmarkdown_elem_list(elem).strip()
+        elif elem.tag == 'ol':
+            self.list_type = 1
+            s = self.new_block(s)
+            s += self.unmarkdown_elem_list(elem).strip()
+        elif elem.tag == 'li':
+            s = self.new_block(s)
+            if type(self.list_type) == str:
+                s += self.list_type + self.unmarkdown_elem_list(elem).strip()
+            elif type(self.list_type) == int:
+                s += str(self.list_type) + '. ' + self.unmarkdown_elem_list(elem).strip()
+                self.list_type += 1
+        elif elem.tag == 'br':
+            s = self.new_block(s)
+        elif elem.tag == 'pre':
+            s = self.new_block(s)
+            t = self.unmarkdown_elem_list(elem)
+            s += '\n'.join(['    %s' % (x,) for x in t.split('\n')])
+        elif elem.tag == 'strong':
+            s += '**%s**' % (elem.text,)
+        elif elem.tag == 'em':
+            s += '*%s*' % (elem.text,)
+        elif elem.tag == 'b':
+            s += '**%s**' % (elem.text,)
+        elif elem.tag == 'a':
+            s += '[%s](%s)' % (elem.text, elem.attrib.get('href', ''))
+        elif elem.tag == 'code':
+            s += '`%s`' % (elem.text,)
+        elif elem.tag == 'img':
+            s += '![%s](%s)' % (elem.attrib['alt'], elem.attrib['src'])
+        elif elem.tag == 'math':
+            s += '$%s$' % (elem.text,)
+        else:
+            raise Exception('Unsupported element %s' % (elem.tag))
+        return s
+
+    def unmarkdown_elem_list(self, elem):
         s = ''
         if elem.text is not None:
             s += elem.text
         for child in elem:
-            if child.tag == 'h1':
-                s = self.new_block(s)
-                s += '# %s' % (child.text,)
-            elif child.tag == 'h2':
-                s = self.new_block(s)
-                s += '## %s' % (child.text,)
-            elif child.tag == 'h3':
-                s = self.new_block(s)
-                s += '### %s' % (child.text,)
-            elif child.tag == 'h4':
-                s = self.new_block(s)
-                s += '#### %s' % (child.text,)
-            elif child.tag == 'p':
-                s = self.new_block(s)
-                s += self.unmarkdown_elem(child).strip()
-            elif child.tag == 'blockquote':
-                s = self.new_block(s)
-                s += '>' + self.unmarkdown_elem(child).strip()
-            elif child.tag == 'ul':
-                self.list_type = '- '
-                s = self.new_block(s)
-                s += self.unmarkdown_elem(child).strip()
-            elif child.tag == 'ol':
-                self.list_type = 1
-                s = self.new_block(s)
-                s += self.unmarkdown_elem(child).strip()
-            elif child.tag == 'li':
-                s = self.new_block(s)
-                if type(self.list_type) == str:
-                    s += self.list_type + self.unmarkdown_elem(child).strip()
-                elif type(self.list_type) == int:
-                    s += str(self.list_type) + '. ' + self.unmarkdown_elem(child).strip()
-                    self.list_type += 1
-            elif child.tag == 'br':
-                s = self.new_block(s)
-            elif child.tag == 'pre':
-                s = self.new_block(s)
-                t = self.unmarkdown_elem(child)
-                s += '\n'.join(['    %s' % (x,) for x in t.split('\n')])
-            elif child.tag == 'strong':
-                s += '**%s**' % (child.text,)
-            elif child.tag == 'em':
-                s += '*%s*' % (child.text,)
-            elif child.tag == 'b':
-                s += '**%s**' % (child.text,)
-            elif child.tag == 'a':
-                s += '[%s](%s)' % (child.text, child.attrib.get('href', ''))
-            elif child.tag == 'code':
-                s += '`%s`' % (child.text,)
-            elif child.tag == 'img':
-                s += '![%s](%s)' % (child.attrib['alt'], child.attrib['src'])
-            elif child.tag == 'math':
-                s += '$%s$' % (child.text,)
-            else:
-                raise Exception('Unsupported element %s' % (child.tag))
+            s = self.unmarkdown_elem(child, s)
             if child.tail is not None:
                 s += child.tail
         return s
 
     def convert(self, html):
         elem = lxml.html.fromstring(html)
-        return self.unmarkdown_elem(elem)
+        s = ''
+        return self.unmarkdown_elem(elem, s)
 
 # Markdown translator
 
