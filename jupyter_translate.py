@@ -57,18 +57,35 @@ class BingTranslator:
         self.cache[params] = res
         return res
 
-    def translate_array(self, text_list, category=None, **config):
+    def translate_array_safe(self, text_list, **config):
+        req = []
+        res = []
+        c = 0
+        for text in text_list:
+            if c + len(text) > 10240:
+                if len(req) == 0:
+                    raise Exception('The text to translate is too long. %d characters.' % len(text))
+                res.extend(self.translate_array(req, **config))
+                req = []
+                c = 0
+            req.append(text)
+            c += len(text)
+        if len(req) > 0:
+            res.extend(self.translate_array(req, **config))
+        return res
+
+    def translate_array(self, text_list, **config):
         url = 'https://api.microsofttranslator.com/V2/Http.svc/TranslateArray'
         headers = {
             'Ocp-Apim-Subscription-Key': self.bing_translator_key,
             'Content-Type': 'application/xml'
             }
         root = ET.Element('TranslateArrayRequest')
-        self._add_translate_request(root, text_list, from_lang, to_lang, category, content_type)
+        self._add_translate_request(root, text_list, **config)
         data = ET.tostring(root)
-        print(data)
         r = requests.post(url, headers=headers, data=data)
         try:
+            r.raise_for_status()
             root = ET.fromstring(r.text)
         finally:
             r.close()
@@ -148,7 +165,7 @@ class BingTranslator:
 
         return res
 
-    def _add_translate_request(self, root, text_list, from_lang, to_lang, category, content_type, max_translations=None):
+    def _add_translate_request(self, root, text_list, from_lang, to_lang, category=None, content_type=None, max_translations=None):
         ET.SubElement(root, 'AppId')
         child = ET.SubElement(root, 'From')
         child.text = from_lang
@@ -156,8 +173,9 @@ class BingTranslator:
         if category is not None:
             category_elem = ET.SubElement(options_elem, '{http://schemas.datacontract.org/2004/07/Microsoft.MT.Web.Service.V2}Category')
             category_elem.text = category
-        content_type_elem = ET.SubElement(options_elem, '{http://schemas.datacontract.org/2004/07/Microsoft.MT.Web.Service.V2}ContentType')
-        content_type_elem.text = content_type
+        if content_type is not None:
+            content_type_elem = ET.SubElement(options_elem, '{http://schemas.datacontract.org/2004/07/Microsoft.MT.Web.Service.V2}ContentType')
+            content_type_elem.text = content_type
         texts_elem = ET.SubElement(root, 'Texts')
         for text in text_list:
             string_elem = ET.SubElement(texts_elem, '{http://schemas.microsoft.com/2003/10/Serialization/Arrays}string')
@@ -309,7 +327,7 @@ class MarkdownTranslator:
     def translate_array(self, text_list, **config):
         do_unmarkdown = [not self.is_html(text) for text in text_list]
         html_list = [self.markdown(text) for text in text_list]
-        html_list = self._bing_translator.translate_array(html_list, content_type='text/html', **config)
+        html_list = self._bing_translator.translate_array_safe(html_list, content_type='text/html', **config)
         if False:
             text_list = [self.unmarkdown(html) for html in html_list]
         else:
@@ -343,31 +361,34 @@ class NotebookTranslator:
     def __init__(self, bing_translator):
         self.markdown_translator = MarkdownTranslator(bing_translator)
 
-    def translate_file(self, infname, outfname=None, **config):
+    def translate_file(self, infname, outfname=None, output_dir=None, **config):
         if infname.endswith('.ipynb'):
-            self.translate_file_notebook(infname, outfname, **config)
+            self.translate_file_notebook(infname, outfname, output_dir, **config)
         elif infname.endswith('.md'):
-            self.translate_file_markdown(infname, outfname, **config)
+            self.translate_file_markdown(infname, outfname, output_dir, **config)
 
-    def translate_file_notebook(self, infname, outfname=None, replace=False, from_lang='en', to_lang='ja', **config):
+    def _make_outfname(self, infname, outfname, output_dir, to_lang, ext):
         if outfname is None:
-            outfname = re.sub(r'\.ipynb', '_%s.ipynb' % (to_lang,), infname)
+            outfname = re.sub(r'\.%s' % (ext,), '_%s.%s' % (to_lang, ext), infname)
             if infname == outfname:
                 raise Exception()
+            if output_dir is not None:
+                outfname = os.path.join(output_dir, os.path.basename(outfname))
+        return outfname
+
+    def translate_file_notebook(self, infname, outfname=None, output_dir=None, to_lang='ja', **config):
+        outfname = self._make_outfname(infname, outfname, output_dir, to_lang, 'ipynb')
         with codecs.open(infname, 'r', 'utf-8-sig') as f:
             doc = json.load(f)
-        self.translate_document(doc, replace=replace, from_lang=from_lang, to_lang=to_lang, **config)
+        self.translate_document(doc, to_lang=to_lang, **config)
         with codecs.open(outfname, 'w', 'utf-8') as f:
             json.dump(doc, f)
 
-    def translate_file_markdown(self, infname, outfname=None, from_lang='en', to_lang='ja', **config):
-        if outfname is None:
-            outfname = re.sub(r'\.md', '_%s.md' % (to_lang,), infname)
-            if infname == outfname:
-                raise Exception()
+    def translate_file_markdown(self, infname, outfname=None, output_dir=None, to_lang='ja', **config):
+        outfname = self.make_outfname(infname, outfname, output_dir, to_lang, 'md')
         with codecs.open(infname, 'r', 'utf-8-sig') as f:
             text = f.read()
-        text = self.markdown_translator.translate(text, **config)
+        text = self.markdown_translator.translate(text, to_lang=to_lang, **config)
         with codecs.open(outfname, 'w', 'utf-8') as f:
             f.write(text)
 
@@ -467,10 +488,12 @@ def main():
     import glob
 
     parser = argparse.ArgumentParser(description='Translate Jupyter notebook using Bing Translator API.')
-    parser.add_argument('-k', '--key', nargs='?', help='Bing Translator API secret key.', type=str)
+    parser.add_argument('--key', '-k', nargs='?', help='Bing Translator API secret key.', type=str)
     parser.add_argument('--key-file', nargs='?', help='Use Bing Translator API secret key from file.', type=str, default='bing.key')
     parser.add_argument('--from', nargs='?', dest='from_lang', help='Language to translate from.', type=str, default='en')
     parser.add_argument('--to', nargs='?', dest='to_lang', help='Language to translate to.', type=str, default='ja')
+    parser.add_argument('--output-directory', '-d', nargs='?', dest='output_dir', help='Output directory', type=str, default=None)
+    parser.add_argument('--preserve', '-p', dest='preserve', help='Preserve the original text.', default=False, action='store_true')
     parser.add_argument('inputs', nargs='+', help="Input files.")
     args = parser.parse_args()
 
@@ -482,24 +505,42 @@ def main():
     fnames = args.inputs
     from_lang = args.from_lang
     to_lang = args.to_lang
+    output_dir = args.output_dir
+    preserve = args.preserve
 
     bt = BingTranslator(key)
     bt.load_cache()
     nt = NotebookTranslator(bt)
     if len(fnames) == 1 and os.path.isdir(fnames[0]):
+        print(to_lang)
         print('Directory mode. Translating files under directory...')
         for fname in glob.glob(os.path.join(fnames[0], '*.ipynb')):
             if not fname.endswith('_%s.ipynb' % (to_lang,)):
                 print('Translating %s...' % (fname,))
-                nt.translate_file(fname)
+                nt.translate_file(
+                    fname, from_lang=from_lang, to_lang=to_lang,
+                    category='generalnn',
+                    output_dir=output_dir, replace=not preserve)
                 bt.save_cache()
     else:
-        for arg in sys.argv[1:]:
+        for arg in fnames:
+            found=False
             for fname in glob.glob(arg):
+                found=True
                 print('Translating %s...' % (fname,))
-                nt.translate_file(fname)
+                nt.translate_file(
+                    fname, from_lang=from_lang, to_lang=to_lang,
+                    category='generalnn',
+                    output_dir=output_dir,
+                    replace=not preserve)
                 bt.save_cache()
+            if not found:
+                raise Exception('Input file `%s\' not found.' % arg)
 
 if __name__ == '__main__':
+    import sys
+    #sys.argv = r'a b c'.split()
+    #sys.argv = r'a -d ..\CNTKja\Tutorials ..\CNTK\Tutorials'.split()
+    #sys.argv = r'a -p -d ..\CNTKja\Tutorials ..\CNTK\Tutorials\CNTK_101_LogisticRegression.ipynb'.split()
     main()
     #test()
