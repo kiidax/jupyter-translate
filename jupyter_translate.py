@@ -30,7 +30,6 @@ class BingTranslator:
         with codecs.open(self.cache_fname, 'w', 'utf-8-sig') as f:
             json.dump(self.cache, f)
 
-
     def translate(self, text, content_type='text/html', from_lang='en', to_lang='ja'):
         params = urllib.parse.urlencode({
             'text': text,
@@ -43,7 +42,7 @@ class BingTranslator:
 
         headers = {
             'Ocp-Apim-Subscription-Key': self.bing_translator_key,
-            'Accept': 'application/json'
+            'Accept': 'application/xml'
             }
         r = requests.get(
             'https://api.microsofttranslator.com/V2/Http.svc/Translate?' + params,
@@ -58,11 +57,116 @@ class BingTranslator:
         self.cache[params] = res
         return res
 
-    def translate_array(self, text_list, **config):
-        return [
-            self.translate(text, **config)
-            for text in text_list
+    def translate_array(self, text_list, category=None, **config):
+        url = 'https://api.microsofttranslator.com/V2/Http.svc/TranslateArray'
+        headers = {
+            'Ocp-Apim-Subscription-Key': self.bing_translator_key,
+            'Content-Type': 'application/xml'
+            }
+        root = ET.Element('TranslateArrayRequest')
+        self._add_translate_request(root, text_list, from_lang, to_lang, category, content_type)
+        data = ET.tostring(root)
+        print(data)
+        r = requests.post(url, headers=headers, data=data)
+        try:
+            root = ET.fromstring(r.text)
+        finally:
+            r.close()
+        nsmap = {
+            's': 'http://schemas.datacontract.org/2004/07/Microsoft.MT.Web.Service.V2'
+            }
+
+        res = [
+            elem.text
+            for elem in root.findall('.//s:TranslateArrayResponse/s:TranslatedText', namespaces=nsmap)
             ]
+
+        return res
+
+    def add_translation(
+        self, original_text, translated_text, user, content_type='text/html', from_lang='en', to_lang='ja',
+        category=None, rating=None):
+
+        params = {
+            'originalText': original_text,
+            'translatedText': translated_text,
+            'contentType': content_type,
+            'category': category,
+            'rating': rating,
+            'user': user,
+            'from': from_lang,
+            'to': to_lang
+        }
+        keys = [k for k, v in params.items() if v is None]
+        for k in keys:
+            del params[k]
+
+        params = urllib.parse.urlencode(params)
+
+        headers = {
+            'Ocp-Apim-Subscription-Key': self.bing_translator_key,
+            'Accept': 'application/xml'
+            }
+        r = requests.get(
+            'https://api.microsofttranslator.com/V2/Http.svc/AddTranslation?' + params,
+            headers=headers
+            )
+        try:
+            #root = ET.fromstring(r.text)
+            #res = root.text
+            print(r.text)
+            res = r.text
+            print(r.status_code)
+        finally:
+            r.close()
+
+        return res
+
+    def get_translations_array(self, text_list, from_lang='en', to_lang='ja', category=None, content_type='text/html', **config):
+        url = 'https://api.microsofttranslator.com/V2/Http.svc/GetTranslationsArray'
+        headers = {
+            'Ocp-Apim-Subscription-Key': self.bing_translator_key,
+            'Content-Type': 'application/xml'
+            }
+        root = ET.Element('GetTranslationsArrayRequest')
+        self._add_translate_request(root, text_list, from_lang, to_lang, category, content_type, max_translations=3)
+        data = ET.tostring(root)
+        r = requests.post(url, headers=headers, data=data)
+        try:
+            root = ET.fromstring(r.text)
+        finally:
+            r.close()
+        nsmap = {
+            's': 'http://schemas.datacontract.org/2004/07/Microsoft.MT.Web.Service.V2'
+            }
+
+        # TODO
+        res = [
+            elem.text
+            for elem in root.findall('.//s:TranslateArrayResponse/s:TranslatedText', namespaces=nsmap)
+            ]
+
+        return res
+
+    def _add_translate_request(self, root, text_list, from_lang, to_lang, category, content_type, max_translations=None):
+        ET.SubElement(root, 'AppId')
+        child = ET.SubElement(root, 'From')
+        child.text = from_lang
+        options_elem = ET.SubElement(root, 'Options')
+        if category is not None:
+            category_elem = ET.SubElement(options_elem, '{http://schemas.datacontract.org/2004/07/Microsoft.MT.Web.Service.V2}Category')
+            category_elem.text = category
+        content_type_elem = ET.SubElement(options_elem, '{http://schemas.datacontract.org/2004/07/Microsoft.MT.Web.Service.V2}ContentType')
+        content_type_elem.text = content_type
+        texts_elem = ET.SubElement(root, 'Texts')
+        for text in text_list:
+            string_elem = ET.SubElement(texts_elem, '{http://schemas.microsoft.com/2003/10/Serialization/Arrays}string')
+            string_elem.text = text
+        to_elem = ET.SubElement(root, 'To')
+        to_elem.text = to_lang
+        if max_translations is not None:
+            max_trans_elem = ET.SubElement(root, 'MaxTranslations')
+            max_trans_elem.text = str(max_translations)
 
 # Markdown
 
@@ -327,16 +431,38 @@ def test_markdown_translate():
     print(t)
     bt.save_cache()
 
+def test_array():
+    with open('bing.key', 'r') as f:
+        key = f.read().strip()
+    bt = BingTranslator(key)
+    category = None
+    res = bt.get_translations_array(['Hello!', 'This is a world.', 'I have a pen.', 'I use deep learning.'],
+                             category=category)
+    for x in res:
+        print(x)
+
+def test_add():
+    with open('bing.key', 'r') as f:
+        key = f.read().strip()
+    bt = BingTranslator(key)
+    category = None
+    res = bt.add_translation('I use deep learning.', u'私は深層学習を使います。',
+                             category=category)
+    #for x in res:
+    #    print(x)
+
 def test():
     #test_translate()
     #test_markdown()
-    test_markdown_translate()
+    #test_markdown_translate()
+    test_add()
+    test_array()
 
 # Main
 
-import argparse
+def main():
 
-if __name__ == '__main__':
+    import argparse
     import sys
     import glob
 
@@ -357,22 +483,23 @@ if __name__ == '__main__':
     from_lang = args.from_lang
     to_lang = args.to_lang
 
-    if False:
-        test()
+    bt = BingTranslator(key)
+    bt.load_cache()
+    nt = NotebookTranslator(bt)
+    if len(fnames) == 1 and os.path.isdir(fnames[0]):
+        print('Directory mode. Translating files under directory...')
+        for fname in glob.glob(os.path.join(fnames[0], '*.ipynb')):
+            if not fname.endswith('_%s.ipynb' % (to_lang,)):
+                print('Translating %s...' % (fname,))
+                nt.translate_file(fname)
+                bt.save_cache()
     else:
-        bt = BingTranslator(key)
-        bt.load_cache()
-        nt = NotebookTranslator(bt)
-        if len(fnames) == 1 and os.path.isdir(fnames[0]):
-            print('Directory mode. Translating files under directory...')
-            for fname in glob.glob(os.path.join(fnames[0], '*.ipynb')):
-                if not fname.endswith('_%s.ipynb' % (to_lang,)):
-                    print('Translating %s...' % (fname,))
-                    nt.translate_file(fname)
-                    bt.save_cache()
-        else:
-            for arg in sys.argv[1:]:
-                for fname in glob.glob(arg):
-                    print('Translating %s...' % (fname,))
-                    nt.translate_file(fname)
-                    bt.save_cache()
+        for arg in sys.argv[1:]:
+            for fname in glob.glob(arg):
+                print('Translating %s...' % (fname,))
+                nt.translate_file(fname)
+                bt.save_cache()
+
+if __name__ == '__main__':
+    main()
+    #test()
