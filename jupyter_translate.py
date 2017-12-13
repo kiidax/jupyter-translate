@@ -444,7 +444,7 @@ class NotebookTranslator:
         for i in range(len(translation_list)):
             text, translated_text = translation_list[i]
             if translated_text is None:
-                translation_list[i] = (text, translated_text_list[j])
+                translation_list[i] = (text, self.translation_prefix + '\n\n' + translated_text_list[j])
                 j += 1
         cells = []
         i = 0
@@ -454,7 +454,7 @@ class NotebookTranslator:
                     cells.append(cell)
                 cell = json.loads(json.dumps(cell))
                 cell['metadata']['original_source'] = cell['source']
-                cell['source'] = self.translation_prefix + '\n\n' + text_list[i]
+                cell['source'] = translation_list[i][1]
                 cells.append(cell)
                 i += 1
             else:
