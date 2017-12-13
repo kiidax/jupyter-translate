@@ -360,6 +360,7 @@ class NotebookTranslator:
 
     def __init__(self, bing_translator):
         self.markdown_translator = MarkdownTranslator(bing_translator)
+        self.translation_prefix = '_unchecked_'
 
     def translate_file(self, infname, outfname=None, output_dir=None, **config):
         if infname.endswith('.ipynb'):
@@ -376,8 +377,16 @@ class NotebookTranslator:
                 outfname = os.path.join(output_dir, os.path.basename(outfname))
         return outfname
 
-    def translate_file_notebook(self, infname, outfname=None, output_dir=None, to_lang='ja', **config):
+    def translate_file_notebook(self, infname, outfname=None, output_dir=None, to_lang='ja', allow_update=False, allow_overwrite=False, **config):
         outfname = self._make_outfname(infname, outfname, output_dir, to_lang, 'ipynb')
+        if os.path.exists(outfname):
+            if allow_update:
+                translation_dict = self.get_translations_from_file(outfname)
+                for x in translation_dict.items():
+                    print("<<<%s\n>>>%s" % x)
+                return
+            elif not allow_overwrite:
+                raise Exception("Cannot overwrite file `%s'" % outfname)
         with codecs.open(infname, 'r', 'utf-8-sig') as f:
             doc = json.load(f)
         self.translate_document(doc, to_lang=to_lang, **config)
@@ -401,6 +410,20 @@ class NotebookTranslator:
         else:
             raise RuntimeException('Unexpected')
 
+    def cell_to_original_markdown(self, cell):
+        metadata = cell.get('metadata')
+        if metadata is None:
+            return None
+        source = metadata.get('original_source')
+        if source is None:
+            return None
+        if type(source) == str:
+            return source
+        elif type(source) == list:
+            return ''.join(source)
+        else:
+            raise RuntimeException('Unexpected')
+
     def translate_document(self, doc, replace=False, **config):
         text_list = [self.cell_to_markdown(cell) for cell in doc['cells'] if cell['cell_type'] == 'markdown']
         text_list = self.markdown_translator.translate_array(text_list, **config)
@@ -412,12 +435,29 @@ class NotebookTranslator:
                     cells.append(cell)
                 cell = json.loads(json.dumps(cell))
                 cell['metadata']['original_source'] = cell['source']
-                cell['source'] = text_list[i]
+                cell['source'] = self.translation_prefix + '\n\n' + text_list[i]
                 cells.append(cell)
                 i += 1
             else:
                 cells.append(cell)
         doc['cells'] = cells
+
+    def get_translations_from_file(self, fname):
+        with codecs.open(fname, 'r', 'utf-8-sig') as f:
+            doc = json.load(f)
+        return self.get_translations_from_doc(doc)
+
+    def get_translations_from_doc(self, doc):
+        translation_list = [
+            (self.cell_to_original_markdown(cell), self.cell_to_markdown(cell))
+            for cell in doc['cells']
+            if cell['cell_type'] == 'markdown'
+            ]
+        return {
+           k: v
+           for k, v in translation_list
+           if k is not None and not v.startswith(self.translation_prefix)
+           }
 
 # Test
 
@@ -494,6 +534,7 @@ def main():
     parser.add_argument('--to', nargs='?', dest='to_lang', help='Language to translate to.', type=str, default='ja')
     parser.add_argument('--output-directory', '-d', nargs='?', dest='output_dir', help='Output directory', type=str, default=None)
     parser.add_argument('--preserve', '-p', dest='preserve', help='Preserve the original text.', default=False, action='store_true')
+    parser.add_argument('--force', '-f', dest='allow_overwrite', help='Allow overwrite the old file.', default=False, action='store_true')
     parser.add_argument('inputs', nargs='+', help="Input files.")
     args = parser.parse_args()
 
@@ -507,6 +548,8 @@ def main():
     to_lang = args.to_lang
     output_dir = args.output_dir
     preserve = args.preserve
+    allow_update = False
+    allow_overwrite = args.allow_overwrite
 
     bt = BingTranslator(key)
     bt.load_cache()
@@ -519,28 +562,29 @@ def main():
                 print('Translating %s...' % (fname,))
                 nt.translate_file(
                     fname, from_lang=from_lang, to_lang=to_lang,
-                    category='generalnn',
+                    category='generalnn', allow_update=allow_update,
+                    allow_overwrite=allow_overwrite,
                     output_dir=output_dir, replace=not preserve)
                 bt.save_cache()
     else:
         for arg in fnames:
             found=False
             for fname in glob.glob(arg):
-                found=True
                 print('Translating %s...' % (fname,))
                 nt.translate_file(
                     fname, from_lang=from_lang, to_lang=to_lang,
-                    category='generalnn',
-                    output_dir=output_dir,
-                    replace=not preserve)
+                    category='generalnn', allow_update=allow_update,
+                    allow_overwrite=allow_overwrite,
+                    output_dir=output_dir, replace=not preserve)
                 bt.save_cache()
+                found=True
             if not found:
                 raise Exception('Input file `%s\' not found.' % arg)
 
 if __name__ == '__main__':
     import sys
     #sys.argv = r'a b c'.split()
-    #sys.argv = r'a -d ..\CNTKja\Tutorials ..\CNTK\Tutorials'.split()
+    sys.argv = r'a -p -d ..\CNTKja\Tutorials ..\CNTK\Tutorials'.split()
     #sys.argv = r'a -p -d ..\CNTKja\Tutorials ..\CNTK\Tutorials\CNTK_101_LogisticRegression.ipynb'.split()
     main()
     #test()
