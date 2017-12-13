@@ -379,17 +379,15 @@ class NotebookTranslator:
 
     def translate_file_notebook(self, infname, outfname=None, output_dir=None, to_lang='ja', allow_update=False, allow_overwrite=False, **config):
         outfname = self._make_outfname(infname, outfname, output_dir, to_lang, 'ipynb')
+        translation_dict = None
         if os.path.exists(outfname):
             if allow_update:
                 translation_dict = self.get_translations_from_file(outfname)
-                for x in translation_dict.items():
-                    print("<<<%s\n>>>%s" % x)
-                return
             elif not allow_overwrite:
                 raise Exception("Cannot overwrite file `%s'" % outfname)
         with codecs.open(infname, 'r', 'utf-8-sig') as f:
             doc = json.load(f)
-        self.translate_document(doc, to_lang=to_lang, **config)
+        self.translate_document(doc, to_lang=to_lang, translation_dict=translation_dict, **config)
         with codecs.open(outfname, 'w', 'utf-8') as f:
             json.dump(doc, f)
 
@@ -424,9 +422,30 @@ class NotebookTranslator:
         else:
             raise RuntimeException('Unexpected')
 
-    def translate_document(self, doc, replace=False, **config):
-        text_list = [self.cell_to_markdown(cell) for cell in doc['cells'] if cell['cell_type'] == 'markdown']
-        text_list = self.markdown_translator.translate_array(text_list, **config)
+    def translate_document(self, doc, replace=False, translation_dict=None, **config):
+        if translation_dict is None:
+            translation_dict = {}
+        translation_list = [
+            self.cell_to_markdown(cell)
+            for cell in doc['cells']
+            if cell['cell_type'] == 'markdown'
+            ]
+        translation_list = [
+            (text, translation_dict.get(text))
+            for text in translation_list
+            ]
+        untranslated_text = [
+            text
+            for text, translated_text in translation_list 
+            if translated_text is None
+            ]
+        translated_text_list = self.markdown_translator.translate_array(untranslated_text, **config)
+        j = 0
+        for i in range(len(translation_list)):
+            text, translated_text = translation_list[i]
+            if translated_text is None:
+                translation_list[i] = (text, translated_text_list[j])
+                j += 1
         cells = []
         i = 0
         for cell in doc['cells']:
@@ -533,8 +552,9 @@ def main():
     parser.add_argument('--from', nargs='?', dest='from_lang', help='Language to translate from.', type=str, default='en')
     parser.add_argument('--to', nargs='?', dest='to_lang', help='Language to translate to.', type=str, default='ja')
     parser.add_argument('--output-directory', '-d', nargs='?', dest='output_dir', help='Output directory', type=str, default=None)
-    parser.add_argument('--preserve', '-p', dest='preserve', help='Preserve the original text.', default=False, action='store_true')
-    parser.add_argument('--force', '-f', dest='allow_overwrite', help='Allow overwrite the old file.', default=False, action='store_true')
+    parser.add_argument('--preserve', '-p', dest='preserve', help='Preserve original texts.', default=False, action='store_true')
+    parser.add_argument('--force', '-f', dest='allow_overwrite', help='Allow overwrite old files.', default=False, action='store_true')
+    parser.add_argument('--update', '-u', dest='allow_update', help='Allow update files.', default=False, action='store_true')
     parser.add_argument('inputs', nargs='+', help="Input files.")
     args = parser.parse_args()
 
@@ -548,7 +568,7 @@ def main():
     to_lang = args.to_lang
     output_dir = args.output_dir
     preserve = args.preserve
-    allow_update = False
+    allow_update = args.allow_update
     allow_overwrite = args.allow_overwrite
 
     bt = BingTranslator(key)
@@ -584,7 +604,7 @@ def main():
 if __name__ == '__main__':
     import sys
     #sys.argv = r'a b c'.split()
-    sys.argv = r'a -p -d ..\CNTKja\Tutorials ..\CNTK\Tutorials'.split()
+    #sys.argv = r'a -p -d ..\CNTKja\Tutorials ..\CNTK\Tutorials'.split()
     #sys.argv = r'a -p -d ..\CNTKja\Tutorials ..\CNTK\Tutorials\CNTK_101_LogisticRegression.ipynb'.split()
     main()
     #test()
