@@ -389,7 +389,7 @@ class NotebookTranslator:
             doc = json.load(f)
         self.translate_document(doc, to_lang=to_lang, translation_dict=translation_dict, **config)
         with codecs.open(outfname, 'w', 'utf-8') as f:
-            json.dump(doc, f)
+            json.dump(doc, f, indent=1, ensure_ascii=False, sort_keys=True)
 
     def translate_file_markdown(self, infname, outfname=None, output_dir=None, to_lang='ja', **config):
         outfname = self.make_outfname(infname, outfname, output_dir, to_lang, 'md')
@@ -399,12 +399,14 @@ class NotebookTranslator:
         with codecs.open(outfname, 'w', 'utf-8') as f:
             f.write(text)
 
-    def cell_to_markdown(self, cell):
+    def cell_to_markdown(self, cell, ensure_str=True):
         source = cell['source']
         if type(source) == str:
             return source
         elif type(source) == list:
-            return ''.join(source)
+            if ensure_str:
+                return ''.join(source)
+            return source
         else:
             raise RuntimeException('Unexpected')
 
@@ -419,6 +421,17 @@ class NotebookTranslator:
             return source
         elif type(source) == list:
             return ''.join(source)
+        else:
+            raise RuntimeException('Unexpected')
+
+    def ensure_list(self, source):
+        if type(source) == str:
+            return [
+                x
+                for x in source.replace('\n', '\n\0').split('\0')
+                ]
+        elif type(source) == list:
+            return source
         else:
             raise RuntimeException('Unexpected')
 
@@ -439,7 +452,10 @@ class NotebookTranslator:
             for text, translated_text in translation_list 
             if translated_text is None
             ]
-        translated_text_list = self.markdown_translator.translate_array(untranslated_text, **config)
+        if len(untranslated_text) == 0:
+            translated_text_list = []
+        else:
+            translated_text_list = self.markdown_translator.translate_array(untranslated_text, **config)
         j = 0
         for i in range(len(translation_list)):
             text, translated_text = translation_list[i]
@@ -454,7 +470,7 @@ class NotebookTranslator:
                     cells.append(cell)
                 cell = json.loads(json.dumps(cell))
                 cell['metadata']['original_source'] = cell['source']
-                cell['source'] = translation_list[i][1]
+                cell['source'] = self.ensure_list(translation_list[i][1])
                 cells.append(cell)
                 i += 1
             else:
@@ -563,6 +579,8 @@ def main():
     elif args.key_file is not None:
         with open(args.key_file, 'r') as f:
             key = f.read().strip()
+    else:
+        key = None
     fnames = args.inputs
     from_lang = args.from_lang
     to_lang = args.to_lang
