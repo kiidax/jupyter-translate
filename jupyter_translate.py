@@ -8,7 +8,13 @@ import json
 import re
 import urllib
 import requests
+import lxml.html
+import markdown
+from markdown.inlinepatterns import Pattern
+from markdown.util import etree
+from markdown.extensions import Extension
 import xml.etree.ElementTree as ET
+
 
 class BingTranslator:
     '''A class to translate plain texts or HTML texts from one language to another using Bing Translator API.'''
@@ -102,8 +108,9 @@ class BingTranslator:
         return res
 
     def add_translation(
-        self, original_text, translated_text, user, content_type='text/html', from_lang='en', to_lang='ja',
-        category=None, rating=None):
+            self, original_text, translated_text, user,
+            content_type='text/html', from_lang='en', to_lang='ja',
+            category=None, rating=None):
 
         params = {
             'originalText': original_text,
@@ -187,11 +194,8 @@ class BingTranslator:
             max_trans_elem = ET.SubElement(root, 'MaxTranslations')
             max_trans_elem.text = str(max_translations)
 
-# Markdown
 
-from markdown.inlinepatterns import Pattern
-from markdown.util import etree
-from markdown.extensions import Extension
+# Markdown
 
 class InlineMathPattern(Pattern):
     def handleMatch(self, m):
@@ -200,14 +204,14 @@ class InlineMathPattern(Pattern):
         el.text = m.group(2)
         return el
 
+
 class MathExtension(Extension):
     def extendMarkdown(self, md, md_globals):
         inline_math = InlineMathPattern(r'\$([^$]+)\$')
         md.inlinePatterns.add('inlinemath', inline_math, '>emphasis2')
 
-# Unmarkdown
 
-import lxml.html
+# Unmarkdown
 
 class Unmarkdown:
 
@@ -298,12 +302,11 @@ class Unmarkdown:
         s = ''
         return self.unmarkdown_elem(elem, s)
 
+
 # Markdown translator
 
-import markdown
-
 class MarkdownTranslator:
-    
+
     def __init__(self, bing_translator):
         self._bing_translator = bing_translator
         self._markdown = markdown.Markdown(extensions=[MathExtension()])
@@ -351,6 +354,7 @@ class MarkdownTranslator:
         self._unmarkdown.reset()
         return self._unmarkdown.convert(text)
 
+
 # Jupyter notebook translator
 
 class NotebookTranslator:
@@ -389,7 +393,7 @@ class NotebookTranslator:
             json.dump(doc, f, indent=1, ensure_ascii=False, sort_keys=True)
 
     def translate_file_markdown(self, infname, outfname=None, output_dir=None, to_lang='ja', **config):
-        outfname = self.make_outfname(infname, outfname, output_dir, to_lang, 'md')
+        outfname = self._make_outfname(infname, outfname, output_dir, to_lang, 'md')
         with codecs.open(infname, 'r', 'utf-8-sig') as f:
             text = f.read()
         text = self.markdown_translator.translate(text, to_lang=to_lang, **config)
@@ -446,7 +450,7 @@ class NotebookTranslator:
             ]
         untranslated_text = [
             text
-            for text, translated_text in translation_list 
+            for text, translated_text in translation_list
             if translated_text is None
             ]
         if len(untranslated_text) == 0:
@@ -491,67 +495,6 @@ class NotebookTranslator:
            if k is not None and not v.startswith(self.translation_prefix)
            }
 
-# Test
-
-def test_translate():
-    with open('bing.key', 'r') as f:
-        key = f.read().strip()
-    bt = BingTranslator(key)
-    bt.load_cache()
-    t = bt.translate(u'Hello!')
-    print(t)
-    bt.save_cache()
-
-def test_markdown():
-    t = u'''Hello $s + 1$.'''
-    md = markdown.Markdown(extensions=[MathExtension()])
-    html = md.convert(t)
-    md.reset()
-    print(html)
-
-def test_markdown_translate():
-    bt = BingTranslator(key)
-    bt.load_cache()
-    mt = MarkdownTranslator(bt)
-    t = u'''
-- Hello $s + 1$.
-- THis is a pen.
-
-1. Go to school.
-2. Happy holiday.
-'''
-    t = mt.translate(t, from_lang="en", to_lang='ja')
-    print(t)
-    bt.save_cache()
-
-def test_array():
-    with open('bing.key', 'r') as f:
-        key = f.read().strip()
-    bt = BingTranslator(key)
-    category = None
-    res = bt.get_translations_array(['Hello!', 'This is a world.', 'I have a pen.', 'I use deep learning.'],
-                             category=category)
-    for x in res:
-        print(x)
-
-def test_add():
-    with open('bing.key', 'r') as f:
-        key = f.read().strip()
-    bt = BingTranslator(key)
-    category = None
-    res = bt.add_translation('I use deep learning.', u'私は深層学習を使います。',
-                             category=category)
-    #for x in res:
-    #    print(x)
-
-def test():
-    #test_translate()
-    #test_markdown()
-    #test_markdown_translate()
-    test_add()
-    test_array()
-
-# Main
 
 def main():
 
@@ -602,7 +545,7 @@ def main():
                 bt.save_cache()
     else:
         for arg in fnames:
-            found=False
+            found = False
             for fname in glob.glob(arg):
                 print('Translating %s...' % (fname,))
                 nt.translate_file(
@@ -611,9 +554,12 @@ def main():
                     allow_overwrite=allow_overwrite,
                     output_dir=output_dir, replace=not preserve)
                 bt.save_cache()
-                found=True
+                found = True
             if not found:
                 raise Exception('Input file `%s\' not found.' % arg)
 
+
 if __name__ == '__main__':
     main()
+
+__all__ = ['BingTranslator', 'MathExtension']
