@@ -5,6 +5,7 @@
 import os
 import codecs
 import json
+import re
 import urllib
 import requests
 import xml.etree.ElementTree as ET
@@ -352,10 +353,6 @@ class MarkdownTranslator:
 
 # Jupyter notebook translator
 
-import json
-import codecs
-import re
-
 class NotebookTranslator:
 
     def __init__(self, bing_translator):
@@ -408,7 +405,7 @@ class NotebookTranslator:
                 return ''.join(source)
             return source
         else:
-            raise RuntimeException('Unexpected')
+            raise RuntimeError('Unexpected')
 
     def cell_to_original_markdown(self, cell):
         metadata = cell.get('metadata')
@@ -422,7 +419,7 @@ class NotebookTranslator:
         elif type(source) == list:
             return ''.join(source)
         else:
-            raise RuntimeException('Unexpected')
+            raise RuntimeError('Unexpected')
 
     def ensure_list(self, source):
         if type(source) == str:
@@ -433,7 +430,7 @@ class NotebookTranslator:
         elif type(source) == list:
             return source
         else:
-            raise RuntimeException('Unexpected')
+            raise RuntimeError('Unexpected')
 
     def translate_document(self, doc, replace=False, translation_dict=None, **config):
         if translation_dict is None:
@@ -559,7 +556,6 @@ def test():
 def main():
 
     import argparse
-    import sys
     import glob
 
     parser = argparse.ArgumentParser(description='Translate Jupyter notebook using Bing Translator API.')
@@ -620,9 +616,4 @@ def main():
                 raise Exception('Input file `%s\' not found.' % arg)
 
 if __name__ == '__main__':
-    import sys
-    #sys.argv = r'a b c'.split()
-    #sys.argv = r'a -p -d ..\CNTKja\Tutorials ..\CNTK\Tutorials'.split()
-    #sys.argv = r'a -p -d ..\CNTKja\Tutorials ..\CNTK\Tutorials\CNTK_101_LogisticRegression.ipynb'.split()
     main()
-    #test()
