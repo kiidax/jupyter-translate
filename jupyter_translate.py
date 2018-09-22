@@ -17,7 +17,9 @@ import xml.etree.ElementTree as ET
 
 
 class BingTranslator:
-    '''A class to translate plain texts or HTML texts from one language to another using Bing Translator API.'''
+    """A class to translate plain texts or HTML texts from one language to
+    another using Bing Translator API.
+    """
 
     def __init__(self, key, cache_fname='bing.cache'):
         self.bing_translator_key = key
