@@ -109,46 +109,6 @@ class BingTranslator:
 
         return res
 
-    def add_translation(
-            self, original_text, translated_text, user,
-            content_type='text/html', from_lang='en', to_lang='ja',
-            category=None, rating=None):
-
-        params = {
-            'originalText': original_text,
-            'translatedText': translated_text,
-            'contentType': content_type,
-            'category': category,
-            'rating': rating,
-            'user': user,
-            'from': from_lang,
-            'to': to_lang
-        }
-        keys = [k for k, v in params.items() if v is None]
-        for k in keys:
-            del params[k]
-
-        params = urllib.parse.urlencode(params)
-
-        headers = {
-            'Ocp-Apim-Subscription-Key': self.bing_translator_key,
-            'Accept': 'application/xml'
-            }
-        r = requests.get(
-            'https://api.microsofttranslator.com/V2/Http.svc/AddTranslation?' + params,
-            headers=headers
-            )
-        try:
-            #root = ET.fromstring(r.text)
-            #res = root.text
-            print(r.text)
-            res = r.text
-            print(r.status_code)
-        finally:
-            r.close()
-
-        return res
-
     def get_translations_array(self, text_list, from_lang='en', to_lang='ja', category=None, content_type='text/html', **config):
         url = 'https://api.microsofttranslator.com/V2/Http.svc/GetTranslationsArray'
         headers = {
@@ -564,4 +524,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-__all__ = ['BingTranslator', 'MathExtension']
+__all__ = ['BingTranslator', 'MarkdownTranslator', 'MathExtension']

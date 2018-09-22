@@ -47,14 +47,6 @@ class TestJupyterTranslate(unittest.TestCase):
         for x in res:
             print(x)
 
-    def test_add(self):
-        bt = BingTranslator(self.key)
-        category = None
-        res = bt.add_translation('I use deep learning.', u'私は深層学習を使います。',
-                                category=category)
-        #for x in res:
-        #    print(x)
-
 
 if __name__ == '__main__':
     unittest.main()
